@@ -23,9 +23,10 @@ Performed at AI Live at the MIT Museum, July 2026.
 
 ## Running it
 
-1. Open `missJiba_Original.toe` in TouchDesigner.
-2. The curtain videos are linked with full paths from the original computer. If they don't load, point `/jibo_show/display/curtain_open` and `curtain_close` at the files in `MissJiba/Curtain Animations/`.
-3. Robots: each Jibo runs an MCP server on port 9010. Update `/project1/MCP/servers` with their addresses (Miss Jiba first), then connect with `op('/project1/JiboMCP/JiboMCPExt').module.Connect()`.
-4. Start the show: `op('/jibo_show/display/display_ctl').module.Go()`
+See **[RUNNING_THE_SHOW.md](RUNNING_THE_SHOW.md)** for the full show day checklist, rehearsal commands, and troubleshooting.
 
-Without robots, the .toe still opens, and the audio, display, and cue log all run.
+## Credits
+
+- **Show, choreography, audio, and TouchDesigner project:** Kantwon Rogers
+- **Jibo MCP server, TouchDesigner connection, and robot fleet:** Jon Ferguson. The MCP and JiboMCP components in this project build on his examples at [mitmedialab/jibo-mcp-examples](https://github.com/mitmedialab/jibo-mcp-examples/tree/main/touchdesigner).
+- **Custom Jibo animations** (`3-kisses`, `big-bow-01`, `looking-around-base-muttering-01`, `missjibo-screen-crack-01`): Fardad
