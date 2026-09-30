@@ -1,0 +1,31 @@
+def onStart():
+	me.parent().op('JiboMCPExt').module.Connect()
+	return
+
+def onCreate():
+	return
+
+def onExit():
+	try:
+		me.parent().op('JiboMCPExt').module.Disconnect()
+	except:
+		pass
+	return
+
+def onFrameStart(frame):
+	return
+
+def onFrameEnd(frame):
+	return
+
+def onPlayStateChange(state):
+	return
+
+def onDeviceChange():
+	return
+
+def onProjectPreSave():
+	return
+
+def onProjectPostSave():
+	return

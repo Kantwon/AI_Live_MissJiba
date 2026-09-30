@@ -1,0 +1,63 @@
+# ============================================================================
+# FRAME EXECUTOR  --  paste this entire block into the
+# /jibo_show/frame_executor Execute DAT, replacing its current contents.
+#
+# Adds time_offset support so start_at(t) lines cues up with the audio.
+# ============================================================================
+
+def onStart():
+    parent().store('last_t', -1.0)
+    parent().store('time_offset', 0.0)
+
+def onCreate():
+    parent().store('last_t', -1.0)
+    parent().store('time_offset', 0.0)
+
+def onExit():
+    return
+
+def onFrameStart(frame):
+    timer = op('master_clock')
+    if timer is None:
+        return
+    running = timer['running']
+    if running is None or running.eval() == 0:
+        return
+
+    current_t = None
+    chan = timer['timer_seconds']
+    if chan is not None:
+        current_t = chan.eval()
+    if current_t is None:
+        frac_chan = timer['timer_fraction']
+        if frac_chan is not None:
+            length = timer.par.length.eval()
+            current_t = frac_chan.eval() * length
+    if current_t is None:
+        return
+
+    # add the offset so cue times line up when starting mid-show
+    offset = parent().fetch('time_offset', 0.0)
+    current_t = current_t + offset
+
+    last_t = parent().fetch('last_t', -1.0)
+    if current_t < last_t:
+        last_t = -1.0
+    if current_t > last_t:
+        op('dispatcher').module.check_cues(current_t, last_t)
+        parent().store('last_t', current_t)
+
+def onFrameEnd(frame):
+    return
+
+def onPlayStateChange(state):
+    return
+
+def onDeviceChange():
+    return
+
+def onProjectPreSave():
+    return
+
+def onProjectPostSave():
+    return

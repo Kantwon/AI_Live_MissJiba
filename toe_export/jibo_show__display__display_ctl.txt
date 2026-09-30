@@ -1,0 +1,68 @@
+BASE = '/jibo_show/display'
+CAM_LABEL = 'j5create 360 Meeting Webcam'
+CONTROLLER = '/jibo_show/controller'
+
+def _op(name): return op(BASE + '/' + name)
+
+def Log(msg, lines=24):
+    dat = _op('show_log')
+    txt = dat.text.rstrip('\n')
+    buf = txt.split('\n') if txt else []
+    buf.append(str(msg))
+    dat.text = '\n'.join(buf[-lines:]) + '\n'
+
+def ClearLog():
+    _op('show_log').text = ''
+
+def AssertCamera():
+    p = _op('cam').par.device
+    labels = list(p.menuLabels)
+    if CAM_LABEL in labels:
+        p.menuIndex = labels.index(CAM_LABEL)
+    else:
+        Log('[warn] camera not found: ' + CAM_LABEL)
+
+def Preshow():
+    _op('curtain_switch').par.index = 0
+    for n in ('curtain_open','curtain_close'):
+        m = _op(n); m.par.play = 1; m.par.cue = 1
+    _op('split_target').par.value0 = 0
+    ClearLog()
+    AssertCamera()
+    Log('[preshow] curtains closed, standing by')
+
+def OpenCurtain():
+    _op('curtain_switch').par.index = 0
+    _op('curtain_open').par.cue = 0
+    Log('[curtain] opening')
+
+def CloseCurtain():
+    _op('curtain_switch').par.index = 1
+    _op('curtain_close').par.cue = 1
+    run("op('" + BASE + "/curtain_close').par.cue = 0", delayFrames=2)
+    Log('[curtain] closing')
+
+def Split(param=1):
+    p = str(param).strip().lower()
+    on = p not in ('0', 'off', 'false', '')
+    _op('split_target').par.value0 = 1 if on else 0
+    Log('[display] split view ' + ('ON' if on else 'OFF'))
+
+def Go(delay=5.0, start_after=4.5):
+    Preshow()
+    Log('[go] curtain opens in %.1fs' % float(delay))
+    run("op('" + BASE + "/display_ctl').module.OpenCurtain()",
+        delayMilliSeconds=int(float(delay) * 1000))
+    run("op('" + CONTROLLER + "').module.start()",
+        delayMilliSeconds=int((float(delay) + float(start_after)) * 1000))
+
+def End():
+    CloseCurtain()
+
+def Cue(action, param=''):
+    a = str(action).strip().lower()
+    if a == 'curtain_open':    OpenCurtain()
+    elif a == 'curtain_close': CloseCurtain()
+    elif a == 'split':         Split(param)
+    elif a == 'log':           Log(param)
+    else: Log('[display] unknown action: ' + a)

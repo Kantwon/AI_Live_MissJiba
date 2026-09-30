@@ -1,0 +1,176 @@
+import threading
+
+DIVA_INDEX = 0
+
+# STAGE LAYOUT (22 Jibos):
+#   DIVA(0)  1  2  3  4  5  6  7  8  9  10  11     <- back row (L->R)
+#              12 13 14 15 16 17 18 19 20  21      <- front row (L->R)
+#
+# TARGET options in cue table:
+#   all                every Jibo (incl diva)
+#   backup             every Jibo except diva (1-21)
+#   diva               just the diva
+#   1..21              specific Jibo
+#   back_row           1-11
+#   front_row          12-21
+#   odd                1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21
+#   even               2, 4, 6, 8, 10, 12, 14, 16, 18, 20
+#   left_half          1-6, 12-16          (stage left)
+#   right_half         7-11, 17-21         (closer to diva)
+#   ends               1, 11, 12, 21       (outer corners)
+#   middle             6, 16, 17           (middle of formation)
+#   zigzag             back/front interleave
+#   zigzag2            front/back interleave
+
+
+def dlog(msg):
+    try:
+        op('/jibo_show/display/display_ctl').module.Log(msg)
+    except:
+        pass
+    print(msg)
+
+
+def resolve_targets(target):
+    """Turn a target name into a list of 0-based Jibo indexes."""
+    jibo = op('/project1/JiboMCP/JiboMCPExt').module
+    total = jibo.ConnectedCount()
+    if total == 0:
+        return []
+
+    if target == 'all':
+        return list(range(total))
+    elif target == 'backup':
+        return [i for i in range(total) if i != DIVA_INDEX]
+    elif target == 'diva':
+        return [DIVA_INDEX]
+    elif target == 'back_row':
+        return [i for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] if i < total]
+    elif target == 'front_row':
+        return [i for i in [12, 13, 14, 15, 16, 17, 18, 19, 20, 21] if i < total]
+    elif target == 'odd':
+        return [i for i in [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21] if i < total]
+    elif target == 'even':
+        return [i for i in [2, 4, 6, 8, 10, 12, 14, 16, 18, 20] if i < total]
+    elif target == 'left_half':
+        return [i for i in [1, 2, 3, 4, 5, 6, 12, 13, 14, 15, 16] if i < total]
+    elif target == 'right_half':
+        return [i for i in [7, 8, 9, 10, 11, 17, 18, 19, 20, 21] if i < total]
+    elif target == 'ends':
+        return [i for i in [1, 11, 12, 21] if i < total]
+    elif target == 'middle':
+        return [i for i in [6, 16, 17] if i < total]
+    elif target == 'zigzag':
+        return [i for i in [1, 12, 2, 13, 3, 14, 4, 15, 5, 16, 6, 17, 7, 18, 8, 19, 9, 20, 10, 21, 11] if i < total]
+    elif target == 'zigzag2':
+        return [i for i in [12, 1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 11] if i < total]
+    elif target == 'col1':
+        return [i for i in [1, 12] if i < total]
+    elif target == 'col2':
+        return [i for i in [2, 13] if i < total]
+    elif target == 'col3':
+        return [i for i in [3, 14] if i < total]
+    elif target == 'col4':
+        return [i for i in [4, 15] if i < total]
+    elif target == 'col5':
+        return [i for i in [5, 16] if i < total]
+    elif target == 'col6':
+        return [i for i in [6, 17] if i < total]
+    elif target == 'col7':
+        return [i for i in [7, 18] if i < total]
+    elif target == 'col8':
+        return [i for i in [8, 19] if i < total]
+    elif target == 'col9':
+        return [i for i in [9, 20] if i < total]
+    elif target == 'col10':
+        return [i for i in [10, 21] if i < total]
+    elif target == 'col11':
+        return [i for i in [11] if i < total]
+    else:
+        try:
+            idx = int(target)
+            if 0 <= idx < total:
+                return [idx]
+            return []
+        except ValueError:
+            print('[CUE] Unknown target: ' + str(target))
+            return []
+
+
+def send(jibo, indexes, tool, **kwargs):
+    """Send a command to specific Jibos, always non-blocking."""
+    total = jibo.ConnectedCount()
+    if set(indexes) == set(range(total)):
+        # All Jibos - broadcast
+        jibo.CallAsync(tool, **kwargs)
+    else:
+        # Specific Jibos - CallTo in background threads
+        mcp = op('/project1/MCP/MCPExt').module
+        for idx in indexes:
+            def _call(i=idx):
+                try:
+                    mcp.CallTo(i, tool, **kwargs)
+                except Exception as e:
+                    print('[CUE] CallTo error ' + str(i) + ': ' + str(e))
+            t = threading.Thread(target=_call)
+            t.daemon = True
+            t.start()
+
+
+def fire_cue(target, action, param):
+    """Send one cue."""
+    if target == 'display':
+        op('/jibo_show/display/display_ctl').module.Cue(action, str(param))
+        return
+    try:
+        jibo = op('/project1/JiboMCP/JiboMCPExt').module
+    except Exception as e:
+        print('[CUE ERROR] ' + str(e))
+        return
+    indexes = resolve_targets(target)
+    if not indexes:
+        return
+    if action == 'motion':
+        send(jibo, indexes, 'play_motion', name=param)
+    elif action == 'face':
+        send(jibo, indexes, 'display_text', text=param, hold_seconds=-1)
+    elif action == 'dismissface':
+        send(jibo, indexes, 'dismiss_display')
+    elif action == 'sway':
+        x = 0.35 if param == 'right' else -0.35 if param == 'left' else 0.0
+        send(jibo, indexes, 'lookat', x=x, y=0.0, z=0.5)
+    elif action == 'look':
+        try:
+            x, y, z = [float(v) for v in param.split(',')]
+        except Exception:
+            x, y, z = 0.0, 0.0, 0.5
+        send(jibo, indexes, 'lookat', x=x, y=y, z=z)
+    elif action == 'led':
+        try:
+            r, g, b = [float(v) for v in param.split(',')]
+        except Exception:
+            r, g, b = 1.0, 1.0, 1.0
+        if r == 0 and g == 0 and b == 0:
+            send(jibo, indexes, 'light_ring_off')
+        else:
+            send(jibo, indexes, 'light_ring_on', r=r, g=g, b=b)
+    elif action == 'speak':
+        send(jibo, indexes, 'speak', text=param)
+    #print('[CUE] ' + str(target) + '  ' + str(action) + '  ' + str(param))
+    dlog('%-10s %-14s %s' % (target, action, param))
+
+
+def check_cues(current_t, last_t):
+    """Fire cues in (last_t, current_t]."""
+    cue_table = op('cues')
+    for row in range(1, cue_table.numRows):
+        try:
+            cue_time = float(cue_table[row, 'time'].val)
+        except (ValueError, AttributeError):
+            continue
+        if last_t < cue_time <= current_t:
+            fire_cue(
+                cue_table[row, 'target'].val,
+                cue_table[row, 'action'].val,
+                cue_table[row, 'param'].val,
+            )

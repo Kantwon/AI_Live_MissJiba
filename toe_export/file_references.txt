@@ -1,0 +1,5 @@
+/jibo_show/audio_track  .file  =  jiboPerformanceAbleton Project/jiboPerformanceAbletonMissJiba_ScreenCrack_FINAL_PANNED_LEFT.mp3
+/jibo_show/display/curtain_close  .file  =  C:/Users/kroge/Dropbox/Documents/Postdoc/Fun/Jibo Performance/MissJiba/Curtain Animations/curtain_close_hap.mov
+/jibo_show/display/curtain_open  .file  =  C:/Users/kroge/Dropbox/Documents/Postdoc/Fun/Jibo Performance/MissJiba/Curtain Animations/curtain_open_hap.mov
+/jibo_show/display/log_text_full  .fontfile  =  C:/Windows/Fonts/consola.ttf
+/jibo_show/display/log_text_split  .fontfile  =  C:/Windows/Fonts/consola.ttf

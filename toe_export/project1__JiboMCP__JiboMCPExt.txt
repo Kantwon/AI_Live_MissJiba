@@ -1,0 +1,277 @@
+"""
+JiboMCP Module for TouchDesigner.
+
+Jibo-specific layer on top of a generic MCP component.
+Handles agency mode lifecycle, startup/exit behaviors,
+and provides convenience methods for common Jibo actions.
+
+Usage:
+    jibo = op('/project1/JiboMCP/JiboMCPExt').module
+    jibo.Speak(text='Hello!')
+    jibo.LookAt(x=0, y=0.3, z=0.5)
+    jibo.LedOn(r=1, g=0, b=0)
+    jibo.LedOff()
+    jibo.TakePhoto()
+    jibo.Call('any_tool', arg=val)
+"""
+
+import threading
+import time
+
+
+# ── Module state ──────────────────────────────────────────────────────
+_connected = False
+
+
+def _comp():
+    """Get the owning COMP."""
+    return me.parent()
+
+
+def _mcp():
+    """Get the MCP module from the referenced MCP component."""
+    try:
+        comp = _comp()
+        mcp_comp = comp.par.Mcpcomp.eval()
+        if mcp_comp:
+            return mcp_comp.op('MCPExt').module
+    except:
+        pass
+    return None
+
+
+# ── Lifecycle ─────────────────────────────────────────────────────────
+
+def Connect():
+    """Connect MCP, then run Jibo startup sequence."""
+    global _connected
+    mcp = _mcp()
+    if not mcp:
+        _log('ERROR: MCP component not found. Set the Mcpcomp parameter.')
+        return
+
+    # Connect the MCP layer
+    mcp.Connect()
+
+    if mcp.ConnectedCount() == 0:
+        _log('No servers connected. Check URLs in MCP servers DAT.')
+        _connected = False
+        return
+
+    _connected = True
+    comp = _comp()
+
+    # Startup sequence (configurable via parameters)
+    if comp.par.Enteragencyonstartup.eval():
+        _log('Entering agency mode...')
+        mcp.Call('enter_agency_mode')
+
+    if comp.par.Resetattentiononstartup.eval():
+        _log('Setting attention OFF...')
+        mcp.Call('set_attention_mode', mode='OFF')
+
+    if comp.par.Resetpositiononstartup.eval():
+        x = comp.par.Defaultposx.eval()
+        y = comp.par.Defaultposy.eval()
+        z = comp.par.Defaultposz.eval()
+        _log('Resetting position to ({}, {}, {})...'.format(x, y, z))
+        mcp.Call('lookat', x=x, y=y, z=z)
+
+    if comp.par.Resetledonstartup.eval():
+        _log('Resetting LED ring...')
+        mcp.Call('light_ring_off')
+
+    if comp.par.Speakonstartup.eval():
+        phrase = comp.par.Startupphrase.eval()
+        if phrase:
+            _log('Speaking: {}'.format(phrase))
+            mcp.Call('speak', text=phrase)
+
+    count = mcp.ConnectedCount()
+    _log('Jibo startup complete. {} {} ready.'.format(
+        count, 'Jibo' if count == 1 else 'Jibos'))
+
+
+def Disconnect():
+    """Run Jibo exit sequence, then disconnect MCP."""
+    global _connected
+    mcp = _mcp()
+    if not mcp or not _connected:
+        return
+
+    comp = _comp()
+
+    if comp.par.Resetledonexit.eval():
+        _log('Turning off LED ring...')
+        try:
+            mcp.Call('light_ring_off')
+        except:
+            pass
+
+    if comp.par.Resetpositiononexit.eval():
+        x = comp.par.Defaultposx.eval()
+        y = comp.par.Defaultposy.eval()
+        z = comp.par.Defaultposz.eval()
+        _log('Resetting position...')
+        try:
+            mcp.Call('lookat', x=x, y=y, z=z)
+        except:
+            pass
+
+    if comp.par.Exitagencyonexit.eval():
+        _log('Exiting agency mode...')
+        try:
+            mcp.Call('exit_agency_mode')
+        except:
+            pass
+
+    _connected = False
+    mcp.Disconnect()
+    _log('Jibo disconnected.')
+
+
+# ── Convenience methods ───────────────────────────────────────────────
+
+def Speak(text='', **kwargs):
+    """Make all Jibos speak."""
+    return Call('speak', text=text, **kwargs)
+
+
+def SpeakAsync(text='', callback=None, **kwargs):
+    """Speak without blocking the UI."""
+    return CallAsync('speak', callback=callback, text=text, **kwargs)
+
+
+def LookAt(x=0.0, y=0.0, z=0.5, **kwargs):
+    """Make all Jibos look at a position."""
+    return Call('lookat', x=x, y=y, z=z, **kwargs)
+
+
+def LookAtAsync(x=0.0, y=0.0, z=0.5, callback=None, **kwargs):
+    """LookAt without blocking the UI."""
+    return CallAsync('lookat', callback=callback, x=x, y=y, z=z, **kwargs)
+
+
+def LedOn(r=1.0, g=1.0, b=1.0, **kwargs):
+    """Turn on LED ring on all Jibos."""
+    return Call('light_ring_on', r=r, g=g, b=b, **kwargs)
+
+
+def LedOnAsync(r=1.0, g=1.0, b=1.0, callback=None, **kwargs):
+    """LED on without blocking."""
+    return CallAsync('light_ring_on', callback=callback, r=r, g=g, b=b, **kwargs)
+
+
+def LedOff(**kwargs):
+    """Turn off LED ring on all Jibos."""
+    return Call('light_ring_off', **kwargs)
+
+
+def LedOffAsync(callback=None, **kwargs):
+    """LED off without blocking."""
+    return CallAsync('light_ring_off', callback=callback, **kwargs)
+
+
+def DisplayText(text='', color='#ffffff', hold_seconds=5, font_size=100, **kwargs):
+    """Display text on all Jibos' screens."""
+    return Call('display_text', text=text, color=color,
+                hold_seconds=hold_seconds, font_size=font_size, **kwargs)
+
+
+def TakePhoto(server_index=0):
+    """Take a photo from a specific Jibo (default: first). Returns result dict."""
+    mcp = _mcp()
+    if not mcp:
+        return None
+    return mcp.CallTo(server_index, 'lps_get_image')
+
+
+def PlayMotion(anim_name=None, category=None, **kwargs):
+    """Play an animation on all Jibos."""
+    kw = kwargs.copy()
+    if anim_name:
+        kw['anim_name'] = anim_name
+    if category:
+        kw['category'] = category
+    return Call('play_motion', **kw)
+
+
+def Stop(**kwargs):
+    """Stop TTS and animations on all Jibos."""
+    return Call('stop', **kwargs)
+
+
+# ── Pass-through to MCP ───────────────────────────────────────────────
+
+def Call(tool, **kwargs):
+    """Call any tool on all servers (broadcast). Returns list of results."""
+    mcp = _mcp()
+    if not mcp:
+        _log('Not connected')
+        return None
+    return mcp.Call(tool, **kwargs)
+
+
+def CallTo(index, tool, **kwargs):
+    """Call a tool on a specific server by index."""
+    mcp = _mcp()
+    if not mcp:
+        _log('Not connected')
+        return None
+    return mcp.CallTo(index, tool, **kwargs)
+
+
+def CallAsync(tool, callback=None, **kwargs):
+    """Call any tool on all servers asynchronously."""
+    mcp = _mcp()
+    if not mcp:
+        _log('Not connected')
+        return None
+    return mcp.CallAsync(tool, callback=callback, **kwargs)
+
+
+def Servers():
+    """List of MCP connection objects."""
+    mcp = _mcp()
+    return mcp.Servers() if mcp else []
+
+
+def Tools():
+    """Dict of tool name -> tool definition."""
+    mcp = _mcp()
+    return mcp.Tools() if mcp else {}
+
+
+def ConnectedCount():
+    """Number of connected Jibos."""
+    mcp = _mcp()
+    return mcp.ConnectedCount() if mcp else 0
+
+
+def Help(tool_name=None):
+    """Print help for a tool or list all tools."""
+    mcp = _mcp()
+    if mcp:
+        mcp.Help(tool_name)
+
+
+def Text(result):
+    """Extract first text content block from an MCP result."""
+    mcp = _mcp()
+    if mcp:
+        return mcp.Text(result)
+    return None
+
+
+# ── Internal ──────────────────────────────────────────────────────────
+
+def _log(msg):
+    """Log to the MCP component's log DAT."""
+    mcp = _mcp()
+    if mcp:
+        try:
+            mcp._log('[Jibo] ' + msg)
+        except:
+            print('[JiboMCP] ' + msg)
+    else:
+        print('[JiboMCP] ' + msg)

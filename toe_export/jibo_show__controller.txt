@@ -1,0 +1,69 @@
+# ============================================================================
+# CONTROLLER  --  paste into /jibo_show/controller Text DAT (replace contents)
+#
+# start()          -> full show from the top (backs-turned opening plays)
+# start_at(t)      -> rehearse from t seconds; snaps everyone to FRONT first
+#                     so animations read correctly (skips the opening setup)
+# stop()           -> stop + reset
+# ============================================================================
+
+FRONT = '-0.3,-0.2,0.4'   # faces audience (confirmed coordinate)
+
+
+def start():
+    """Start the show from the very beginning (with backs-turned opening)."""
+    start_at(0.0)
+
+
+def start_at(t):
+    """
+    Start the show at t seconds in.
+    For any t > 0, first snaps all robots to FRONT (facing the audience)
+    so the choreography's animations are oriented correctly, since the
+    backs-turned opening setup is being skipped.
+    """
+    t = float(t)
+    audio = op('audio_track')
+    timer = op('master_clock')
+
+    # If starting mid-show, pre-orient everyone to face front.
+    if t > 0.5:
+        try:
+            jibo = op('/project1/JiboMCP/JiboMCPExt').module
+            # face the audience
+            jibo.Call('lookat', x=0.3, y=0.2, z=0.5)
+            # gentle neutral LED so they aren't stuck on a leftover color
+            jibo.Call('light_ring_on', r=0.45, g=0.35, b=0.13)
+            # diva pink + facing front too
+            jibo.CallTo(0, 'lookat', x=0.3, y=0.2, z=0.5)
+            jibo.CallTo(0, 'light_ring_on', r=1.0, g=0.0, b=0.7)
+        except Exception as e:
+            print('pre-orient skipped: ' + str(e))
+
+    # dispatcher bookkeeping
+    parent().store('last_t', t - 0.001)
+    parent().store('time_offset', t)
+
+    # cue audio to t
+    audio.par.play = 0
+    audio.par.cuepoint = t
+    audio.par.cuepulse.pulse()
+
+    # reset + start timer
+    timer.par.initialize.pulse()
+    timer.par.play = 1
+    timer.par.start.pulse()
+
+    audio.par.play = 1
+    print('>>> SHOW STARTED at ' + str(t) + 's' + (' (pre-oriented FRONT)' if t > 0.5 else ''))
+
+
+def stop():
+    """Stop the show and reset."""
+    op('audio_track').par.play = 0
+    op('audio_track').par.cuepoint = 0
+    op('audio_track').par.cuepulse.pulse()
+    op('master_clock').par.initialize.pulse()
+    parent().store('last_t', -1.0)
+    parent().store('time_offset', 0.0)
+    print('>>> SHOW STOPPED')

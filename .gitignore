@@ -1,0 +1,12 @@
+# Ableton analysis files (auto-generated, not needed)
+*.asd
+
+# TouchDesigner auto-backups and crash files
+Backup/
+*.toe.bak
+CrashAutoSave*
+
+# OS junk
+Desktop.ini
+Thumbs.db
+.DS_Store
